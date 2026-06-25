@@ -1,0 +1,73 @@
+:root {
+  font-family: "Inter", "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+  color: #bec7c1;
+  background: #050607;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  --bg: #050607;
+  --panel: rgba(15, 18, 19, 0.86);
+  --line: rgba(255, 255, 255, 0.09);
+  --line-strong: rgba(255, 255, 255, 0.18);
+  --text: #bec7c1;
+  --text-muted: #87908c;
+  --text-strong: #f3f5f1;
+  --accent: #a9c8bc;
+  --accent-muted: #8da197;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  margin: 0;
+  min-width: 320px;
+  min-height: 100vh;
+  background: var(--bg);
+}
+
+body,
+button,
+input,
+textarea {
+  font: inherit;
+}
+
+a,
+button,
+img,
+video {
+  -webkit-user-drag: none;
+}
+
+img,
+video {
+  max-width: 100%;
+}
+
+h1,
+h2,
+h3,
+p {
+  margin: 0;
+}
+
+h1,
+h2,
+h3 {
+  font-weight: 560;
+}
+
+p {
+  font-size: 16px;
+}
+
+#root {
+  min-height: 100vh;
+}
