@@ -1,4 +1,4 @@
-import { Fragment, createElement, useEffect, useLayoutEffect, useRef, useState } from 'react'
+﻿import { Fragment, createElement, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import './App.css'
@@ -11,8 +11,9 @@ gsap.registerPlugin(ScrollTrigger)
 const withBase = (path) => `${import.meta.env.BASE_URL}${path.replace(/^\//, '')}`
 const portfolioVideoVolume = 0.65
 const heroVideoMaxDuration = 20000
-const mobileRatioDesignWidth = 1440
-const desktopMobilePreviewWidth = 540
+const mobileViewportMaxWidth = 900
+const openingMediaThreshold = 1
+const openingMediaMaxWait = 12000
 
 const getVideoMimeType = (url) => {
   if (url.toLowerCase().endsWith('.webm')) return 'video/webm'
@@ -36,7 +37,7 @@ const heroVideoObjectPositions = {
 
 const metrics = [
   {
-    value: '100万+美元',
+    value: '100万美元',
     label: '素材覆盖产品单月销售额',
     detail: '健康类跨境电商广告素材，用于 TK、FB 投放引流到独立站。',
   },
@@ -62,7 +63,7 @@ const strengths = [
     body: '熟悉 AI 生图、生视频、换脸换景、剪辑包装和素材复盘，能快速验证方向并形成稳定产出节奏。',
   },
   {
-    title: '自学能力强硬 拥有综合能力',
+    title: '自学能力强且拥有综合能力',
     body: '具备快速自学与跨工具整合能力，能把 AI 生成、视频剪辑、3D 视觉和复盘 SOP 串联起来，独立拆解问题并转化为稳定产出。',
   },
   {
@@ -133,6 +134,38 @@ const handlePortfolioVideoPlay = (event) => {
   currentVideo.muted = isTransparentVideo
 }
 
+const getInitialViewportSize = () => {
+  if (typeof window === 'undefined') return { width: 1440, height: 900 }
+
+  return {
+    width: window.innerWidth,
+    height: window.innerHeight,
+  }
+}
+
+const detectTouchMobileDevice = () => {
+  if (typeof window === 'undefined' || typeof navigator === 'undefined') return false
+
+  const coarsePointer = window.matchMedia?.('(pointer: coarse)').matches
+  const userAgent = navigator.userAgent || ''
+  const isiPadOSDesktopMode = navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1
+
+  return /Android|iPhone|iPod|iPad|Mobile/i.test(userAgent) || isiPadOSDesktopMode || coarsePointer
+}
+
+const getOpeningMediaSources = (modules, isRealMobileLayout) => {
+  if (isRealMobileLayout) {
+    return [heroVideos[0]]
+  }
+
+  const portfolioSources = modules
+    .flatMap((module) => getOrderedModuleMedia(module.media).filter((item) => item.type === 'video'))
+    .slice(0, 3)
+    .map((item) => item.url)
+
+  return [...new Set([heroVideos[0], ...portfolioSources])]
+}
+
 const portfolioModuleOrder = [
   'AI 编导与动画',
   'AI 产品动画',
@@ -140,11 +173,12 @@ const portfolioModuleOrder = [
 ]
 const hiddenPortfolioModules = ['技术思路分享']
 
-export function PortfolioCarouselSection({ module }) {
+export function PortfolioCarouselSection({ module, isRealMobileLayout }) {
   const [workIndex, setWorkIndex] = useState(0)
   const [direction, setDirection] = useState('next')
   const [isAnimating, setIsAnimating] = useState(false)
   const [mediaOrientations, setMediaOrientations] = useState({})
+  const [readyMedia, setReadyMedia] = useState({})
   const works = getOrderedModuleMedia(module.media)
   const activeWork = works[workIndex]
   const carouselWorks = works.length
@@ -194,8 +228,15 @@ export function PortfolioCarouselSection({ module }) {
   }
 
   const getMediaOrientation = (item) => (
-    mediaOrientations[item.url] || (item.title.startsWith('IP动画-') ? 'portrait' : 'landscape')
+    mediaOrientations[item.url] || (item.title.startsWith('IP鍔ㄧ敾-') ? 'portrait' : 'landscape')
   )
+
+  const markMediaReady = (item) => {
+    setReadyMedia((currentReadyMedia) => ({
+      ...currentReadyMedia,
+      [item.url]: true,
+    }))
+  }
 
   useEffect(() => {
     if (!isAnimating) return undefined
@@ -235,12 +276,15 @@ export function PortfolioCarouselSection({ module }) {
 
         <div
           className={`feature-carousel feature-carousel--${direction} feature-carousel--active-${getMediaOrientation(activeWork)}${isAnimating ? ' is-switching' : ''}`}
-          aria-label={`${module.title}作品轮播`}
+          aria-label={`${module.title}浣滃搧杞挱`}
         >
           <div className="feature-stage">
-            {carouselWorks.map(({ item, position }) => (
+            {carouselWorks.map(({ item, position }) => {
+              const shouldLoadVideo = !isRealMobileLayout || position === 'active' || isTransparentPortfolioVideo(item)
+
+              return (
               <article
-                className={`media-card media-card--featured media-card--${position} media-card--${getMediaOrientation(item)}`}
+                className={`media-card media-card--featured media-card--${position} media-card--${getMediaOrientation(item)}${readyMedia[item.url] ? ' is-media-ready' : ' is-media-loading'}`}
                 key={item.url}
                 aria-hidden={position !== 'active'}
               >
@@ -248,7 +292,7 @@ export function PortfolioCarouselSection({ module }) {
                   {item.type === 'video' ? (
                     <video
                       controls={position === 'active'}
-                      preload={isTransparentPortfolioVideo(item) ? 'auto' : 'metadata'}
+                      preload={shouldLoadVideo ? (isTransparentPortfolioVideo(item) ? 'auto' : 'metadata') : 'none'}
                       data-portfolio-video="true"
                       data-transparent-video={isTransparentPortfolioVideo(item) ? 'true' : undefined}
                       controlsList="nodownload noremoteplayback"
@@ -262,6 +306,7 @@ export function PortfolioCarouselSection({ module }) {
                       onDragStart={preventPortfolioDownload}
                       onLoadedMetadata={(event) => {
                         preparePortfolioVideo(event.currentTarget)
+                        markMediaReady(item)
                         if (isTransparentPortfolioVideo(item) && position === 'active') {
                           event.currentTarget.muted = true
                           event.currentTarget.play().catch(() => {})
@@ -273,6 +318,7 @@ export function PortfolioCarouselSection({ module }) {
                         )
                       }}
                       onCanPlay={(event) => {
+                        markMediaReady(item)
                         if (isTransparentPortfolioVideo(item) && position === 'active') {
                           event.currentTarget.muted = true
                           event.currentTarget.play().catch(() => {})
@@ -280,7 +326,9 @@ export function PortfolioCarouselSection({ module }) {
                       }}
                       onPlay={handlePortfolioVideoPlay}
                     >
-                      <source src={withBase(item.url)} type={getVideoMimeType(item.url)} />
+                      {shouldLoadVideo ? (
+                        <source src={withBase(item.url)} type={getVideoMimeType(item.url)} />
+                      ) : null}
                     </video>
                   ) : (
                     <img
@@ -291,6 +339,7 @@ export function PortfolioCarouselSection({ module }) {
                       onContextMenu={preventPortfolioDownload}
                       onDragStart={preventPortfolioDownload}
                       onLoad={(event) => {
+                        markMediaReady(item)
                         rememberMediaOrientation(
                           item,
                           event.currentTarget.naturalWidth,
@@ -304,20 +353,38 @@ export function PortfolioCarouselSection({ module }) {
                   <h4>{item.title}</h4>
                 </div>
               </article>
-            ))}
+              )
+            })}
             <button
-              className="feature-arrow feature-arrow--previous"
+              className="feature-arrow feature-arrow--previous feature-arrow--overlay"
               type="button"
               onClick={showPreviousWork}
               aria-label="上一个作品"
             />
             <button
-              className="feature-arrow feature-arrow--next"
+              className="feature-arrow feature-arrow--next feature-arrow--overlay"
               type="button"
               onClick={showNextWork}
               aria-label="下一个作品"
             />
           </div>
+
+          {isRealMobileLayout ? (
+            <div className="feature-mobile-controls" aria-label="作品切换">
+              <button
+                className="feature-arrow feature-arrow--previous feature-arrow--mobile"
+                type="button"
+                onClick={showPreviousWork}
+                aria-label="上一个作品"
+              />
+              <button
+                className="feature-arrow feature-arrow--next feature-arrow--mobile"
+                type="button"
+                onClick={showNextWork}
+                aria-label="下一个作品"
+              />
+            </div>
+          ) : null}
 
           <div className="feature-counter">{workIndex + 1} / {works.length}</div>
         </div>
@@ -343,25 +410,20 @@ function App() {
   const [heroVideoIndex, setHeroVideoIndex] = useState(0)
   const [isNavFloating, setIsNavFloating] = useState(false)
   const [activeNavId, setActiveNavId] = useState('')
-  const [previewMode, setPreviewMode] = useState('desktop')
-  const [viewportSize, setViewportSize] = useState({ width: 1440, height: 900 })
-  const [scaledStageHeight, setScaledStageHeight] = useState(null)
+  const [viewportSize, setViewportSize] = useState(getInitialViewportSize)
+  const [isTouchMobileDevice, setIsTouchMobileDevice] = useState(false)
+  const [openingMediaProgress, setOpeningMediaProgress] = useState(0)
+  const [isOpeningReady, setIsOpeningReady] = useState(false)
   const heroVideoRef = useRef(null)
   const responsiveContentRef = useRef(null)
   const responsiveStageRef = useRef(null)
   const siteShellRef = useRef(null)
   const heroVideo = heroVideos[heroVideoIndex]
-  const isPhoneViewport = viewportSize.width <= 640
-  const isDesktopMobilePreview = previewMode === 'mobile' && !isPhoneViewport
-  const isPhoneRatioLayout = previewMode === 'mobile' || isPhoneViewport
-  const phoneViewportWidth = previewMode === 'mobile' && !isPhoneViewport
-    ? desktopMobilePreviewWidth
-    : viewportSize.width
-  const phoneViewportHeight = isDesktopMobilePreview
-    ? Math.round(phoneViewportWidth * 16 / 9)
-    : viewportSize.height
-  const phoneStageScale = Math.min(1, phoneViewportWidth / mobileRatioDesignWidth)
-  const phoneDesignHeight = Math.ceil(phoneViewportHeight / phoneStageScale)
+  const isPhoneViewport = viewportSize.width <= mobileViewportMaxWidth
+  const isRealMobileLayout = isPhoneViewport || isTouchMobileDevice
+  const isDesktopMobilePreview = false
+  const isPhoneRatioLayout = false
+  const phoneStageScale = 1
   const portfolioDisplayModules = portfolioModules
     .filter((module) => !hiddenPortfolioModules.includes(module.title))
     .sort((currentModule, nextModule) => {
@@ -372,6 +434,74 @@ function App() {
     })
   const portfolioTotalCount = portfolioDisplayModules.reduce((total, module) => total + module.count, 0)
   const portfolioVideoCount = portfolioDisplayModules.reduce((total, module) => total + module.videos, 0)
+  const openingMediaSources = useMemo(
+    () => getOpeningMediaSources(portfolioDisplayModules, isRealMobileLayout),
+    [portfolioDisplayModules, isRealMobileLayout],
+  )
+
+  useEffect(() => {
+    setIsTouchMobileDevice(detectTouchMobileDevice())
+  }, [])
+
+  useEffect(() => {
+    if (!openingMediaSources.length) {
+      setOpeningMediaProgress(1)
+      setIsOpeningReady(true)
+      return undefined
+    }
+
+    let isCancelled = false
+    const readySources = new Set()
+    const cleanupMedia = []
+
+    const markReady = (source) => {
+      if (isCancelled || readySources.has(source)) return
+
+      readySources.add(source)
+      const nextProgress = Math.min(1, readySources.size / openingMediaSources.length)
+      setOpeningMediaProgress(nextProgress)
+
+      if (nextProgress >= openingMediaThreshold) {
+        setIsOpeningReady(true)
+      }
+    }
+
+    openingMediaSources.forEach((source) => {
+      const video = document.createElement('video')
+      const readyHandler = () => markReady(source)
+      const errorHandler = () => markReady(source)
+
+      video.preload = 'auto'
+      video.muted = true
+      video.playsInline = true
+      video.src = withBase(source)
+      video.addEventListener('loadedmetadata', readyHandler, { once: true })
+      video.addEventListener('loadeddata', readyHandler, { once: true })
+      video.addEventListener('canplay', readyHandler, { once: true })
+      video.addEventListener('error', errorHandler, { once: true })
+      video.load()
+      cleanupMedia.push(() => {
+        video.removeEventListener('loadedmetadata', readyHandler)
+        video.removeEventListener('loadeddata', readyHandler)
+        video.removeEventListener('canplay', readyHandler)
+        video.removeEventListener('error', errorHandler)
+        video.removeAttribute('src')
+        video.load()
+      })
+    })
+
+    const fallbackTimer = window.setTimeout(() => {
+      if (isCancelled) return
+      setOpeningMediaProgress(1)
+      setIsOpeningReady(true)
+    }, openingMediaMaxWait)
+
+    return () => {
+      isCancelled = true
+      window.clearTimeout(fallbackTimer)
+      cleanupMedia.forEach((cleanup) => cleanup())
+    }
+  }, [openingMediaSources])
 
   const playNextHeroVideo = () => {
     setHeroVideoIndex((currentIndex) => (currentIndex + 1) % heroVideos.length)
@@ -396,6 +526,13 @@ function App() {
     })
   }, [heroVideoIndex])
 
+  useEffect(() => {
+    const root = siteShellRef.current
+    if (!root) return
+
+    root.classList.toggle('opening-ready', isOpeningReady)
+  }, [isOpeningReady])
+
   useLayoutEffect(() => {
     const root = siteShellRef.current
     if (!root) return undefined
@@ -410,8 +547,35 @@ function App() {
     const context = gsap.context(() => {
       root.classList.add('motion-ready')
 
+      const openingLoop = gsap.timeline({
+        repeat: -1,
+        defaults: { ease: 'power2.inOut' },
+      })
+
+      openingLoop
+        .set('.opening-panel', { scaleX: 1, transformOrigin: 'left center' })
+        .set('.opening-mark__line', { scaleX: 0, transformOrigin: 'left center' })
+        .to('.opening-mark__text', {
+          y: 0,
+          autoAlpha: 1,
+          duration: 0.7,
+          ease: 'power3.out',
+        }, 0)
+        .to('.opening-mark__line', {
+          scaleX: 1,
+          duration: 1,
+          stagger: 0.12,
+        }, 0.12)
+        .to('.opening-mark__line', {
+          scaleX: 0.18,
+          duration: 0.76,
+          stagger: 0.08,
+          transformOrigin: 'right center',
+        }, 1.08)
+
       const openingTimeline = gsap.timeline({
         defaults: { ease: 'expo.out' },
+        paused: true,
       })
 
       openingTimeline
@@ -424,38 +588,25 @@ function App() {
           '.hero__actions',
         ], { autoAlpha: 0 })
         .set('.hero__video', { scale: 1.14, filter: 'saturate(0.56) contrast(1.24) brightness(0.42)' })
-        .set('.opening-panel', { scaleX: 1, transformOrigin: 'left center' })
-        .set('.opening-mark__line', { scaleX: 0, transformOrigin: 'left center' })
-        .to('.opening-mark__line', {
-          scaleX: 1,
-          duration: 1.15,
-          ease: 'power4.inOut',
-          stagger: 0.13,
-        }, 0.08)
-        .to('.opening-mark__text', {
-          y: 0,
-          autoAlpha: 1,
-          duration: 0.95,
-          ease: 'power3.out',
-        }, 0.24)
+        .add(() => openingLoop.kill(), 0)
         .to('.opening-panel', {
           scaleX: 0,
           duration: 1.22,
           ease: 'power4.inOut',
           transformOrigin: 'right center',
-        }, 1.05)
+        }, 0)
         .to('.opening-mark', {
           autoAlpha: 0,
           y: -24,
           duration: 0.72,
           ease: 'power3.inOut',
-        }, 1.02)
+        }, 0)
         .to('.hero__video', {
           scale: 1,
           filter: 'saturate(0.86) contrast(1.08) brightness(0.76)',
           duration: 2.1,
           ease: 'power3.out',
-        }, 0.9)
+        }, 0)
         .fromTo('.hero__name-line', {
           yPercent: 110,
           scaleY: 0.72,
@@ -466,7 +617,7 @@ function App() {
           scaleY: 1,
           clipPath: 'inset(0 0 0% 0)',
           duration: 1.25,
-        }, 1.34)
+        }, 0.44)
         .fromTo('.hero__statement', {
           y: 78,
           scaleX: 0.88,
@@ -478,12 +629,12 @@ function App() {
           scaleX: 1,
           clipPath: 'inset(0% 0 0 0)',
           duration: 1.38,
-        }, 1.58)
+        }, 0.68)
         .to('.hero__role', {
           autoAlpha: 1,
           y: 0,
           duration: 0.88,
-        }, 1.78)
+        }, 0.88)
         .fromTo(['.hero__copy', '.hero__actions', '.nav'], {
           y: 34,
           filter: 'blur(12px)',
@@ -493,8 +644,12 @@ function App() {
           filter: 'blur(0px)',
           duration: 1,
           stagger: 0.12,
-        }, 2.08)
+        }, 1.18)
         .set('.opening-animation', { autoAlpha: 0, pointerEvents: 'none' })
+
+      if (isOpeningReady) {
+        openingTimeline.play(0)
+      }
 
       gsap.to('.hero__video', {
         yPercent: 10,
@@ -650,7 +805,7 @@ function App() {
       window.clearTimeout(refreshTimer)
       context.revert()
     }
-  }, [isDesktopMobilePreview])
+  }, [isDesktopMobilePreview, isOpeningReady])
 
   useEffect(() => {
     const updateNavState = () => {
@@ -726,14 +881,6 @@ function App() {
   }, [isDesktopMobilePreview])
 
   useEffect(() => {
-    document.body.classList.toggle('mobile-preview-mode', previewMode === 'mobile')
-
-    return () => {
-      document.body.classList.remove('mobile-preview-mode')
-    }
-  }, [previewMode])
-
-  useEffect(() => {
     const updateViewportSize = () => {
       setViewportSize({
         width: window.innerWidth,
@@ -747,50 +894,16 @@ function App() {
     return () => window.removeEventListener('resize', updateViewportSize)
   }, [])
 
-  useLayoutEffect(() => {
-    if (!isPhoneRatioLayout || !responsiveContentRef.current) {
-      setScaledStageHeight(null)
-      return undefined
-    }
-
-    const content = responsiveContentRef.current
-    const updateStageHeight = () => {
-      setScaledStageHeight(Math.ceil(content.scrollHeight * phoneStageScale))
-    }
-    const resizeObserver = new ResizeObserver(updateStageHeight)
-
-    updateStageHeight()
-    resizeObserver.observe(content)
-    window.addEventListener('resize', updateStageHeight)
-
-    return () => {
-      resizeObserver.disconnect()
-      window.removeEventListener('resize', updateStageHeight)
-    }
-  }, [isPhoneRatioLayout, phoneStageScale])
-
   useEffect(() => {
     const refreshTimer = window.setTimeout(() => ScrollTrigger.refresh(), 120)
 
     return () => window.clearTimeout(refreshTimer)
-  }, [previewMode, scaledStageHeight])
-
-  const phoneRatioStyle = isPhoneRatioLayout
-    ? {
-        '--phone-stage-width': `${mobileRatioDesignWidth}px`,
-        '--phone-viewport-width': `${phoneViewportWidth}px`,
-        '--phone-viewport-height': `${phoneViewportHeight}px`,
-        '--phone-stage-scale': phoneStageScale,
-        '--phone-design-height': `${phoneDesignHeight}px`,
-        '--phone-stage-layout-height': scaledStageHeight ? `${scaledStageHeight}px` : 'auto',
-      }
-    : undefined
+  }, [])
 
   return (
     <div
       ref={siteShellRef}
-      className={`site-shell${isPhoneRatioLayout ? ' site-shell--phone-ratio' : ''}${isDesktopMobilePreview ? ' site-shell--mobile-simulator' : ''}`}
-      style={phoneRatioStyle}
+      className={`site-shell${isRealMobileLayout ? ' site-shell--real-mobile' : ''}${isPhoneRatioLayout ? ' site-shell--phone-ratio' : ''}${isDesktopMobilePreview ? ' site-shell--mobile-simulator' : ''}`}
     >
       <div className="opening-animation" aria-hidden="true">
         <div className="opening-panel" />
@@ -798,30 +911,14 @@ function App() {
           <span className="opening-mark__text">CHEN SONG / AI VISUAL PORTFOLIO</span>
           <span className="opening-mark__line" />
           <span className="opening-mark__line opening-mark__line--short" />
+          <span className="opening-mark__progress">
+            Loading media {Math.round(Math.min(1, openingMediaProgress) * 100)}%
+          </span>
         </div>
       </div>
-      <div className="preview-switcher" role="group" aria-label="预览模式切换">
-        <button
-          type="button"
-          className={previewMode === 'desktop' ? 'preview-switcher__button is-active' : 'preview-switcher__button'}
-          onClick={() => setPreviewMode('desktop')}
-          aria-pressed={previewMode === 'desktop'}
-          aria-label="桌面预览"
-          title="桌面预览"
-        >
-          <span className="preview-switcher__icon preview-switcher__icon--desktop" aria-hidden="true" />
-        </button>
-        <button
-          type="button"
-          className={previewMode === 'mobile' ? 'preview-switcher__button is-active' : 'preview-switcher__button'}
-          onClick={() => setPreviewMode('mobile')}
-          aria-pressed={previewMode === 'mobile'}
-          aria-label="手机预览"
-          title="手机预览"
-        >
-          <span className="preview-switcher__icon preview-switcher__icon--mobile" aria-hidden="true" />
-        </button>
-      </div>
+      {isRealMobileLayout ? (
+        <div className="mobile-view-hint" aria-live="polite">使用电脑查看更佳</div>
+      ) : null}
       <div className="responsive-stage" ref={responsiveStageRef}>
       <div className="responsive-stage__content" ref={responsiveContentRef}>
       <header className="hero" id="home">
@@ -833,7 +930,7 @@ function App() {
           autoPlay
           muted
           playsInline
-          preload="metadata"
+          preload={isRealMobileLayout ? 'auto' : 'metadata'}
           aria-label="作品集首屏背景视频"
           onCanPlay={(event) => {
             event.currentTarget.play().catch(() => {})
@@ -888,6 +985,7 @@ function App() {
       </header>
 
       <main className="site-main">
+        {!isRealMobileLayout ? (
         <div className="site-main__grainient" aria-hidden="true">
           {createElement(Grainient, {
             color1: '#410f18',
@@ -912,6 +1010,7 @@ function App() {
             zoom: 0.82,
           })}
         </div>
+        ) : null}
         <section className="section about" id="about">
           <div className="container about__grid">
             <div className="about__media">
@@ -962,7 +1061,7 @@ function App() {
               BorderGlow,
               {
                 className: 'timeline__item',
-                key: `${item.time}-${item.role}`,
+                key: item.time + '-' + item.role,
                 edgeSensitivity: 38,
                 glowRadius: 12,
                 glowIntensity: 0.28,
@@ -1009,7 +1108,7 @@ function App() {
             {portfolioDisplayModules.map((module, index) => createElement(
               Fragment,
               { key: module.folder },
-              createElement(PortfolioCarouselSection, { module }),
+              createElement(PortfolioCarouselSection, { module, isRealMobileLayout }),
               index < portfolioDisplayModules.length - 1
                 ? createElement(PortfolioModuleDivider, {
                     currentIndex: index + 1,

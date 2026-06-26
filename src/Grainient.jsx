@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { Mesh, Program, Renderer, Triangle } from 'ogl'
 import './Grainient.css'
 
@@ -132,56 +132,90 @@ function Grainient({
   className = '',
 }) {
   const containerRef = useRef(null)
+  const [isFallback, setIsFallback] = useState(false)
 
   useEffect(() => {
     const container = containerRef.current
     if (!container) return undefined
 
-    const renderer = new Renderer({
-      webgl: 2,
-      alpha: true,
-      antialias: false,
-      dpr: Math.min(window.devicePixelRatio || 1, 2),
-    })
+    const probeCanvas = document.createElement('canvas')
+    const canUseWebGl2 = !!probeCanvas.getContext('webgl2')
+    if (!canUseWebGl2) {
+      setIsFallback(true)
+      return undefined
+    }
+
+    let renderer
+    try {
+      renderer = new Renderer({
+        webgl: 2,
+        alpha: true,
+        antialias: false,
+        dpr: Math.min(window.devicePixelRatio || 1, 2),
+      })
+    } catch {
+      setIsFallback(true)
+      return undefined
+    }
 
     const gl = renderer.gl
+    if (!gl?.canvas) {
+      setIsFallback(true)
+      return undefined
+    }
+
     const canvas = gl.canvas
     canvas.style.width = '100%'
     canvas.style.height = '100%'
     canvas.style.display = 'block'
     container.appendChild(canvas)
 
-    const geometry = new Triangle(gl)
-    const program = new Program(gl, {
-      vertex,
-      fragment,
-      uniforms: {
-        iTime: { value: 0 },
-        iResolution: { value: new Float32Array([1, 1]) },
-        uTimeSpeed: { value: 0.25 },
-        uColorBalance: { value: 0 },
-        uWarpStrength: { value: 1 },
-        uWarpFrequency: { value: 5 },
-        uWarpSpeed: { value: 2 },
-        uWarpAmplitude: { value: 50 },
-        uBlendAngle: { value: 0 },
-        uBlendSoftness: { value: 0.05 },
-        uRotationAmount: { value: 500 },
-        uNoiseScale: { value: 2 },
-        uGrainAmount: { value: 0.1 },
-        uGrainScale: { value: 2 },
-        uGrainAnimated: { value: 0 },
-        uContrast: { value: 1.5 },
-        uGamma: { value: 1 },
-        uSaturation: { value: 1 },
-        uCenterOffset: { value: new Float32Array([0, 0]) },
-        uZoom: { value: 0.9 },
-        uColor1: { value: new Float32Array([1, 1, 1]) },
-        uColor2: { value: new Float32Array([1, 1, 1]) },
-        uColor3: { value: new Float32Array([1, 1, 1]) },
-      },
-    })
-    const mesh = new Mesh(gl, { geometry, program })
+    let geometry
+    let program
+    let mesh
+    try {
+      geometry = new Triangle(gl)
+      program = new Program(gl, {
+        vertex,
+        fragment,
+        uniforms: {
+          iTime: { value: 0 },
+          iResolution: { value: new Float32Array([1, 1]) },
+          uTimeSpeed: { value: 0.25 },
+          uColorBalance: { value: 0 },
+          uWarpStrength: { value: 1 },
+          uWarpFrequency: { value: 5 },
+          uWarpSpeed: { value: 2 },
+          uWarpAmplitude: { value: 50 },
+          uBlendAngle: { value: 0 },
+          uBlendSoftness: { value: 0.05 },
+          uRotationAmount: { value: 500 },
+          uNoiseScale: { value: 2 },
+          uGrainAmount: { value: 0.1 },
+          uGrainScale: { value: 2 },
+          uGrainAnimated: { value: 0 },
+          uContrast: { value: 1.5 },
+          uGamma: { value: 1 },
+          uSaturation: { value: 1 },
+          uCenterOffset: { value: new Float32Array([0, 0]) },
+          uZoom: { value: 0.9 },
+          uColor1: { value: new Float32Array([1, 1, 1]) },
+          uColor2: { value: new Float32Array([1, 1, 1]) },
+          uColor3: { value: new Float32Array([1, 1, 1]) },
+        },
+      })
+      mesh = new Mesh(gl, { geometry, program })
+    } catch {
+      try {
+        container.removeChild(canvas)
+      } catch {
+        // The canvas may already be detached after a failed WebGL setup.
+      }
+      setIsFallback(true)
+      return undefined
+    }
+
+    setIsFallback(false)
     ctxMap.set(container, { renderer, program, mesh })
 
     const setSize = () => {
@@ -306,7 +340,7 @@ function Grainient({
     zoom,
   ])
 
-  return <div ref={containerRef} className={`grainient-container ${className}`.trim()} />
+  return <div ref={containerRef} className={`grainient-container ${isFallback ? 'grainient-container--fallback' : ''} ${className}`.trim()} />
 }
 
 export default Grainient

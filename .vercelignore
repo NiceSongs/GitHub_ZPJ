@@ -1,0 +1,13 @@
+node_modules
+dist
+.git
+output
+tmp
+subtitle_work
+.tmp_subtitles
+vlog-usa
+ip*_frame_*.jpg
+
+public/portfolio/AI-真实素材视频/handheld-product-3-full-v1.mp4
+public/portfolio/AI-真实素材视频/软糖-系列-2.mp4
+public/portfolio/AI-编导与动画/IP动画-4.mp4
